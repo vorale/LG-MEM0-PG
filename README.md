@@ -359,7 +359,8 @@ AI: 基于您之前提到的对足球的喜爱和偏好火车旅行，我推荐.
 
 **启动记忆仪表板**:
 ```bash
-python memory_dashboard.py
+cd tools
+streamlit run memory_dashboard.py
 ```
 
 **功能特性**:
