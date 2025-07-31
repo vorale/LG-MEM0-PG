@@ -1,0 +1,79 @@
+# ===== 核心依赖 =====
+# LangGraph和Mem0核心
+langgraph>=0.0.40
+mem0ai>=0.0.11
+langchain-aws>=0.1.0
+langchain-core>=0.2.0
+langchain-community>=0.2.0
+
+# AWS服务
+boto3>=1.34.0
+
+# 数据库
+psycopg2-binary>=2.9.0
+pgvector>=0.2.0
+
+# 网络搜索 (可选)
+tavily-python>=0.3.0
+
+# 环境配置
+python-dotenv>=1.0.0
+
+# ===== API服务依赖 =====
+# FastAPI核心
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.5.0
+
+# 异步支持
+asyncio-mqtt>=0.13.0
+
+# 文件上传和CORS
+python-multipart>=0.0.6
+
+# 认证相关 (可选)
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+
+# ===== 工具和仪表板依赖 =====
+# 数据分析和可视化
+pandas>=2.0.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.15.0
+
+# Streamlit仪表板
+streamlit>=1.28.0
+
+# CLI工具
+click>=8.1.0
+rich>=13.0.0
+
+# HTTP客户端
+requests>=2.31.0
+
+# ===== 基础设施依赖 (可选) =====
+# AWS CDK - 仅在需要部署Aurora时安装
+# aws-cdk-lib>=2.100.0
+# constructs>=10.3.0
+
+# ===== 开发和测试依赖 (可选) =====
+# 测试框架
+# pytest>=7.4.0
+# pytest-asyncio>=0.21.0
+
+# 代码质量工具
+# black>=23.0.0
+# flake8>=6.0.0
+# mypy>=1.5.0
+
+# ===== 说明 =====
+# 1. 基础功能只需要"核心依赖"部分
+# 2. API服务需要"核心依赖" + "API服务依赖"
+# 3. 仪表板和工具需要"工具和仪表板依赖"
+# 4. 基础设施部署需要取消注释"基础设施依赖"
+# 5. 开发环境可以取消注释"开发和测试依赖"
+
+# 安装示例:
+# pip install -r requirements.txt                    # 完整安装
+# pip install mem0ai langgraph fastapi uvicorn      # 最小安装

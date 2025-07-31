@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# Memory Maintenance Command Wrapper
+# This script provides a convenient way to run memory maintenance operations
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PYTHON_SCRIPT="$PROJECT_ROOT/tools/memory_maintenance_cli.py"
+
+# Check if the Python script exists
+if [ ! -f "$PYTHON_SCRIPT" ]; then
+    echo "❌ Error: memory_maintenance_cli.py not found at $PYTHON_SCRIPT"
+    echo "Expected location: tools/memory_maintenance_cli.py"
+    exit 1
+fi
+
+# Change to project root directory
+cd "$PROJECT_ROOT"
+
+# Check if .env file exists and load environment variables
+if [ -f ".env" ]; then
+    # Load environment variables using the same method as start-api-service.sh
+    export $(grep -v '^#' .env | grep -v '^$' | xargs)
+fi
+
+# Check if Python dependencies are available
+python3 -c "import mem0, boto3" 2>/dev/null
+if [ $? -ne 0 ]; then
+    echo "❌ Error: Required Python packages not found"
+    echo "Please install dependencies:"
+    echo "  pip install -r requirements.txt"
+    exit 1
+fi
+
+# Run the Python script with all arguments
+python3 "$PYTHON_SCRIPT" "$@"

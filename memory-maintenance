@@ -1,0 +1,5 @@
+#!/bin/bash
+# Backward compatibility wrapper for the memory maintenance script
+
+echo "🔄 Redirecting to new script location..."
+exec ./scripts/memory-maintenance "$@"
