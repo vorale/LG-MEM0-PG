@@ -179,7 +179,7 @@ echo "=============================================="
 # Check if reload mode is requested
 if [ -n "$RELOAD" ]; then
     # Development mode with auto-reload
-    uvicorn src.api.service:app \
+    python -m uvicorn src.api.service:app \
         --host "$HOST" \
         --port "$PORT" \
         --reload \
@@ -187,7 +187,7 @@ if [ -n "$RELOAD" ]; then
         --log-level info
 else
     # Production mode
-    uvicorn src.api.service:app \
+    python -m uvicorn src.api.service:app \
         --host "$HOST" \
         --port "$PORT" \
         --workers "$WORKERS" \

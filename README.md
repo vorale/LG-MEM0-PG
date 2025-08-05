@@ -1,6 +1,6 @@
 # LangGraph + Mem0 AI Agent with AWS Bedrock & PostgreSQL
 
-这个项目展示了如何构建一个具有智能记忆能力的AI Agent，使用LangGraph和Mem0，基于AWS Bedrock和PostgreSQL with pgvector。
+这个项目展示了如何构建一个具有智能记忆能力的AI Agent，使用LangGraph和Mem0，基于AWS Bedrock和PostgreSQL with pgvector。项目提供OpenAI兼容的API服务接口。
 
 ## 🚀 特性
 
@@ -12,16 +12,18 @@
 - 👤 **用户特定记忆**: 为不同用户分离记忆上下文
 - 🔄 **记忆检索**: 自动检索相关记忆进行个性化回答
 - 📊 **记忆仪表板**: 可视化记忆类型分布和统计信息
+- 🌐 **OpenAI兼容API**: 提供标准的聊天完成API接口
 - 🐳 **双环境支持**: 本地Docker开发 + Aurora Serverless生产
 
 ## 🏗️ 架构
 
 ```
-用户输入 → 记忆搜索 (PostgreSQL+pgvector) → LLM处理 (AWS Bedrock) → 工具调用 (Tavily) → 响应 + 记忆存储
+HTTP API → 记忆搜索 (PostgreSQL+pgvector) → LLM处理 (AWS Bedrock) → 工具调用 (Tavily) → 响应 + 记忆存储
 ```
 
 ### 技术栈
 
+- **API服务**: FastAPI with OpenAI兼容接口
 - **LLM**: AWS Bedrock Claude-3.7-Sonnet
 - **嵌入**: AWS Bedrock Titan Text Embeddings
 - **向量数据库**: PostgreSQL with pgvector extension
@@ -58,7 +60,7 @@
 
 ```bash
 # 1. 进入项目目录
-cd lg-m0-psql
+cd LG-MEM0-PG
 
 # 2. 安装Python依赖
 pip install -r requirements.txt
@@ -69,6 +71,10 @@ aws configure
 # export AWS_ACCESS_KEY_ID=your-access-key
 # export AWS_SECRET_ACCESS_KEY=your-secret-key
 # export AWS_DEFAULT_REGION=us-west-2
+
+# 4. 配置环境变量
+cp .env.example .env
+# 编辑 .env 文件，填入您的配置
 ```
 
 ### 步骤2: 选择部署模式
@@ -76,17 +82,14 @@ aws configure
 #### 🐳 **模式A: 本地开发 (推荐开始)**
 
 ```bash
-# 1. 切换到本地环境
-./switch-env.sh local
-
-# 2. 启动PostgreSQL容器
+# 1. 启动PostgreSQL容器
 ./docker-postgres.sh start
 
-# 3. 验证数据库连接
-python setup_postgres.py
+# 2. 验证数据库连接
+python src/utils/database.py
 
-# 4. 运行Agent
-./run-agent.sh
+# 3. 启动API服务
+./start-api-service.sh
 ```
 
 #### ☁️ **模式B: Aurora Serverless生产**
@@ -104,8 +107,8 @@ npm install -g aws-cdk
 # 3. 验证CDK安装
 cdk --version
 
-# 4. 安装CDK Python依赖
-pip install -r requirements-cdk.txt
+# 4. 安装CDK Python依赖 (如果存在requirements-cdk.txt)
+pip install aws-cdk-lib constructs
 
 # 5. 验证AWS权限
 aws sts get-caller-identity
@@ -114,22 +117,17 @@ aws sts get-caller-identity
 **Aurora基础设施部署:**
 ```bash
 # 1. CDK Bootstrap (首次使用CDK时需要)
+cd infrastructure
 cdk bootstrap
 
-# 2. 自动化部署Aurora Serverless v2
-python deploy_infrastructure.py
+# 2. 部署Aurora基础设施
+cdk deploy
 
-# 3. 获取Aurora凭证并更新.env
-python get_aurora_credentials.py
+# 3. 更新.env文件中的Aurora连接信息
 
-# 4. 切换到Aurora环境
-./switch-env.sh aurora
-
-# 5. 验证Aurora连接 (需要VPC访问)
-python verify_aurora_setup.py
-
-# 6. 运行Agent (需要VPC访问)
-python langgraph_mem0_agent.py
+# 4. 启动API服务
+cd ..
+./start-api-service.sh
 ```
 
 **所需AWS权限:**
@@ -159,8 +157,10 @@ python langgraph_mem0_agent.py
 
 | 文件 | 用途 | 说明 |
 |------|------|------|
-| `langgraph_mem0_agent.py` | 主应用程序 | LangGraph + Mem0 Agent核心逻辑 |
-| `memory_dashboard.py` | 记忆仪表板 | 可视化记忆类型分布和统计信息 |
+| `src/api/service.py` | API服务主程序 | OpenAI兼容的API服务接口 |
+| `src/core/memory_manager.py` | 记忆管理器 | Mem0记忆管理核心逻辑 |
+| `src/core/emotional_prompts.py` | 情感提示词 | 情感陪伴对话提示词模板 |
+| `src/utils/database.py` | 数据库工具 | PostgreSQL连接和设置工具 |
 | `requirements.txt` | Python依赖 | 运行时所需的Python包 |
 | `.env` | 环境配置 | 数据库连接和API密钥配置 |
 
@@ -168,30 +168,34 @@ python langgraph_mem0_agent.py
 
 | 文件 | 用途 | 说明 |
 |------|------|------|
-| `docker-compose.yml` | Docker配置 | PostgreSQL容器定义 |
-| `init-scripts/01-init-pgvector.sql` | 数据库初始化 | 自动创建pgvector扩展和表 |
+| `docker/docker-compose.yml` | Docker配置 | PostgreSQL容器定义 |
+| `docker/init-scripts/01-init-pgvector.sql` | 数据库初始化 | 自动创建pgvector扩展和表 |
 | `docker-postgres.sh` | Docker管理 | PostgreSQL容器管理脚本 |
-| `.env.local` | 本地环境配置 | 本地Docker PostgreSQL配置 |
+| `.env.example` | 环境配置模板 | 环境变量配置示例 |
 
 ### ☁️ AWS基础设施文件
 
 | 文件 | 用途 | 说明 |
 |------|------|------|
 | `infrastructure/aurora_stack.py` | CDK栈定义 | Aurora Serverless v2基础设施 |
-| `app.py` | CDK应用入口 | CDK应用主文件 |
-| `cdk.json` | CDK配置 | CDK项目配置 |
-| `requirements-cdk.txt` | CDK依赖 | CDK部署所需Python包 |
+| `infrastructure/app.py` | CDK应用入口 | CDK应用主文件 |
+| `infrastructure/cdk.json` | CDK配置 | CDK项目配置 |
 
 ### 🛠️ 管理脚本
 
 | 脚本 | 功能 | 用法 |
 |------|------|------|
-| `switch-env.sh` | 环境切换 | `./switch-env.sh local\|aurora\|status` |
-| `run-agent.sh` | 启动Agent | `./run-agent.sh` (带警告抑制) |
-| `deploy_infrastructure.py` | 部署Aurora | `python deploy_infrastructure.py` |
-| `get_aurora_credentials.py` | 获取凭证 | `python get_aurora_credentials.py` |
-| `setup_postgres.py` | 数据库设置 | `python setup_postgres.py` |
-| `verify_aurora_setup.py` | 验证Aurora | `python verify_aurora_setup.py` |
+| `start-api-service.sh` | 启动API服务 | `./start-api-service.sh` |
+| `docker-postgres.sh` | Docker管理 | PostgreSQL容器管理 |
+| `scripts/configure_emotional_style.py` | 情感配置 | 配置情感对话风格 |
+| `memory-maintenance` | 记忆维护 | 记忆数据维护脚本 |
+
+### 🛠️ 工具和仪表板
+
+| 工具 | 功能 | 用法 |
+|------|------|------|
+| `tools/memory_dashboard.py` | 记忆仪表板 | `streamlit run tools/memory_dashboard.py` |
+| `tools/memory_maintenance_cli.py` | 记忆维护CLI | 命令行记忆管理工具 |
 
 ### 🛠️ Docker PostgreSQL管理
 
@@ -224,23 +228,29 @@ python langgraph_mem0_agent.py
 ## 📁 项目结构
 
 ```
-lg-m0-psql/
+LG-MEM0-PG/
 ├── README.md                    # 项目主要说明
 ├── requirements.txt             # 统一的Python依赖
 ├── .env                        # 环境配置文件
+├── .env.example                # 环境配置模板
+├── .gitignore                  # Git忽略文件
 ├── start-api-service.sh        # API服务启动脚本 (兼容性)
 ├── docker-postgres.sh          # Docker管理脚本 (兼容性)
+├── memory-maintenance          # 记忆维护脚本
 │
 ├── src/                        # 源代码目录
+│   ├── __init__.py            # Python包初始化
 │   ├── core/                   # 核心功能模块
-│   │   ├── agent.py           # LangGraph Agent主程序
+│   │   ├── __init__.py        # 包初始化
 │   │   ├── memory_manager.py  # 记忆管理器
 │   │   ├── emotional_prompts.py # 情感陪伴提示词
 │   │   └── telemetry.py       # 遥测禁用
 │   ├── api/                    # API服务模块
+│   │   ├── __init__.py        # 包初始化
 │   │   ├── service.py         # OpenAI兼容API服务
 │   │   └── memory_endpoints.py # 记忆管理端点
 │   └── utils/                  # 工具模块
+│       ├── __init__.py        # 包初始化
 │       └── database.py        # 数据库设置工具
 │
 ├── scripts/                    # 脚本目录
@@ -251,8 +261,7 @@ lg-m0-psql/
 │
 ├── tools/                      # 工具和CLI
 │   ├── memory_dashboard.py    # 记忆仪表板
-│   ├── memory_maintenance_cli.py # 记忆维护CLI
-│   └── enhanced_agent.py      # 增强版Agent
+│   └── memory_maintenance_cli.py # 记忆维护CLI
 │
 ├── tests/                      # 测试目录
 │   └── (各种测试文件)
@@ -267,19 +276,17 @@ lg-m0-psql/
 │   ├── aurora_stack.py       # Aurora CDK栈
 │   └── (部署相关文件)
 │
-├── docker/                     # Docker配置
-│   ├── docker-compose.yml    # Docker Compose配置
-│   └── init-scripts/         # 数据库初始化脚本
-│
-└── examples/                   # 示例代码
-    └── (示例文件)
+└── docker/                     # Docker配置
+    ├── docker-compose.yml    # Docker Compose配置
+    └── init-scripts/         # 数据库初始化脚本
+        └── 01-init-pgvector.sql
 ```
 
 ## 🔧 配置选项
 
 ### AWS Bedrock模型配置
 
-在 `langgraph_mem0_agent.py` 中可以更改模型:
+在 `src/core/memory_manager.py` 中可以更改模型:
 
 ```python
 # LLM模型选项
@@ -340,6 +347,26 @@ parameters={
 
 ## 💡 使用示例
 
+### API服务使用
+
+启动API服务后，可以通过OpenAI兼容的API接口进行对话：
+
+```bash
+# 启动API服务
+./start-api-service.sh
+
+# 使用curl测试API
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-3-7-sonnet",
+    "messages": [
+      {"role": "user", "content": "我最近很喜欢看足球比赛"}
+    ],
+    "user": "user123"
+  }'
+```
+
 ### 第一次对话
 ```
 输入: 我最近很喜欢看足球比赛
@@ -359,8 +386,7 @@ AI: 基于您之前提到的对足球的喜爱和偏好火车旅行，我推荐.
 
 **启动记忆仪表板**:
 ```bash
-cd tools
-streamlit run memory_dashboard.py
+streamlit run tools/memory_dashboard.py
 ```
 
 **功能特性**:
@@ -401,7 +427,7 @@ streamlit run memory_dashboard.py
    - 确保数据库存在
 
 3. **pgvector扩展缺失**
-   - 运行: `python setup_postgres.py`
+   - 运行: `python src/utils/database.py`
    - 检查PostgreSQL版本兼容性
    - 验证向量维度匹配
 
@@ -420,6 +446,11 @@ streamlit run memory_dashboard.py
    - Aurora Serverless v2可能需要15-30秒启动
    - 检查VPC和安全组配置
    - 确保从正确的网络环境访问
+
+7. **API服务启动失败**
+   - 检查端口8000是否被占用
+   - 验证环境变量配置
+   - 查看API服务日志
 
 ### 调试模式
 
@@ -460,9 +491,12 @@ logging.basicConfig(level=logging.DEBUG)
 
 ## 📚 相关文档
 
-- [MEMORY_MECHANISM.md](./MEMORY_MECHANISM.md) - 详细的记忆机制说明
-- [DEPLOYMENT.md](./DEPLOYMENT.md) - Aurora Serverless详细部署指南
-- [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md) - 项目结构说明
+- [API_SERVICE.md](./docs/API_SERVICE.md) - API服务详细文档
+- [MEMORY_MECHANISM.md](./docs/MEMORY_MECHANISM.md) - 详细的记忆机制说明
+- [MEMORY_DASHBOARD.md](./docs/MEMORY_DASHBOARD.md) - 记忆仪表板使用指南
+- [MEMORY_MAINTENANCE_CLI.md](./docs/MEMORY_MAINTENANCE_CLI.md) - 记忆维护CLI工具文档
+- [AURORA_DEPLOYMENT.md](./docs/AURORA_DEPLOYMENT.md) - Aurora Serverless部署指南
+- [MEMORY_PROMOTION_DESIGN.md](./docs/MEMORY_PROMOTION_DESIGN.md) - 记忆提升机制设计
 - [LangGraph文档](https://langchain-ai.github.io/langgraph/)
 - [Mem0文档](https://docs.mem0.ai/)
 - [AWS Bedrock文档](https://docs.aws.amazon.com/bedrock/)
@@ -472,10 +506,10 @@ logging.basicConfig(level=logging.DEBUG)
 
 如果遇到问题:
 
-1. 运行设置指南: `python verify_aurora_setup.py`
-2. 检查故障排除部分
-3. 查看AWS Bedrock和PostgreSQL日志
-4. 确保满足所有前置条件
+1. 检查故障排除部分
+2. 查看AWS Bedrock和PostgreSQL日志
+3. 确保满足所有前置条件
+4. 验证数据库连接: `python src/utils/database.py`
 
 ---
 

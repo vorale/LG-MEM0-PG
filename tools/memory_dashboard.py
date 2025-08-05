@@ -1,16 +1,66 @@
+# CRITICAL: Disable telemetry BEFORE any other imports
 import os
+import sys
 import uuid
 import warnings
-import logging
 
-# Set up detailed logging
+# Set all telemetry environment variables
+os.environ["MEM0_TELEMETRY"] = "false"
+os.environ["POSTHOG_DISABLED"] = "true"
+os.environ["POSTHOG_PERSONAL_API_KEY"] = ""
+os.environ["MEM0_USER_ID"] = str(uuid.uuid4())
+os.environ["PYTHONWARNINGS"] = "ignore::DeprecationWarning"
+
+# Mock PostHog completely before it can be imported
+class MockPostHogClient:
+    def __init__(self, *args, **kwargs):
+        pass
+    def capture(self, *args, **kwargs):
+        pass
+    def identify(self, *args, **kwargs):
+        pass
+    def alias(self, *args, **kwargs):
+        pass
+    def flush(self, *args, **kwargs):
+        pass
+    def shutdown(self, *args, **kwargs):
+        pass
+
+class MockPosthog:
+    """Mock the Posthog class that Mem0 tries to import"""
+    def __init__(self, *args, **kwargs):
+        pass
+    def capture(self, *args, **kwargs):
+        pass
+    def identify(self, *args, **kwargs):
+        pass
+    def flush(self, *args, **kwargs):
+        pass
+    def shutdown(self, *args, **kwargs):
+        pass
+
+class MockPostHogModule:
+    Client = MockPostHogClient
+    Posthog = MockPosthog  # This is what Mem0 is trying to import
+    
+    def capture(self, *args, **kwargs):
+        pass
+    def identify(self, *args, **kwargs):
+        pass
+
+# Replace posthog in sys.modules before any imports
+mock_module = MockPostHogModule()
+sys.modules['posthog'] = mock_module
+sys.modules['posthog.client'] = mock_module
+
+# Suppress warnings
+warnings.simplefilter("ignore", DeprecationWarning)
+
+# Set up logging after telemetry is disabled
+import logging
 logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('memory_dashboard.log')
-    ]
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
@@ -18,20 +68,6 @@ logger = logging.getLogger(__name__)
 os.environ["PYTHONIOENCODING"] = "utf-8"
 os.environ["LC_ALL"] = "en_US.UTF-8"
 os.environ["LANG"] = "en_US.UTF-8"
-
-# Set environment variable to suppress Python warnings
-os.environ["PYTHONWARNINGS"] = "ignore::DeprecationWarning"
-
-# Suppress all deprecation warnings globally
-warnings.simplefilter("ignore", DeprecationWarning)
-
-# Set a unique user ID for telemetry to avoid the None error
-os.environ["MEM0_USER_ID"] = str(uuid.uuid4())
-
-# Disable telemetry completely
-os.environ["MEM0_TELEMETRY"] = "false"
-os.environ["POSTHOG_DISABLED"] = "true"
-os.environ["POSTHOG_PERSONAL_API_KEY"] = ""
 
 import streamlit as st
 import pandas as pd
@@ -47,26 +83,17 @@ import boto3
 load_dotenv()
 logger.info("Environment variables loaded")
 
-# Fix telemetry by monkey patching posthog client
+# Mock mem0 telemetry functions
+def mock_capture_event(*args, **kwargs):
+    pass
+
+# Disable mem0 telemetry after import
 try:
-    from mem0 import Memory
     import mem0.memory.telemetry
-    
-    # Monkey patch posthog client to handle None distinct_id
-    import posthog.client
-    original_capture = posthog.client.Client.capture
-    
-    def patched_capture(self, distinct_id=None, event=None, properties=None, **kwargs):
-        # If distinct_id is None, use a default UUID
-        if distinct_id is None:
-            distinct_id = str(uuid.uuid4())
-        return original_capture(self, distinct_id, event, properties, **kwargs)
-    
-    posthog.client.Client.capture = patched_capture
-    logger.info("✅ PostHog client patched to handle None distinct_id")
-    
-except ImportError as e:
-    logger.warning(f"⚠️  Could not patch PostHog: {e}")
+    mem0.memory.telemetry.capture_event = mock_capture_event
+    logger.info("✅ Mem0 telemetry disabled")
+except ImportError:
+    pass
 
 # Page configuration
 st.set_page_config(
@@ -82,6 +109,9 @@ def init_mem0():
     logger.info("🔧 Starting Mem0 initialization...")
     
     try:
+        # Import Memory after telemetry is disabled
+        from mem0 import Memory
+        
         # Verify AWS credentials are available (using boto3 default credential chain)
         logger.info("🔍 Checking AWS credentials...")
         try:
@@ -242,13 +272,35 @@ def test_mem0_connection():
                         test_memories = mem0.get_all(**{param_name: test_user_id})
                         
                         logger.info(f"📊 get_all({param_name}) result type: {type(test_memories)}")
-                        logger.info(f"📊 get_all({param_name}) result length: {len(test_memories) if test_memories else 0}")
+                        logger.info(f"📊 get_all({param_name}) result: {test_memories}")
                         
-                        st.success(f"✅ get_all({param_name}='{test_user_id}') works! Found {len(test_memories) if test_memories else 0} memories")
+                        # Handle different return types from get_all()
+                        if isinstance(test_memories, dict):
+                            # If it's a dict, it might have a 'results' key or be structured differently
+                            if 'results' in test_memories:
+                                memories_list = test_memories['results']
+                                st.success(f"✅ get_all({param_name}='{test_user_id}') works! Found {len(memories_list)} memories in results")
+                            else:
+                                # If it's a dict but no 'results' key, show the structure
+                                st.success(f"✅ get_all({param_name}='{test_user_id}') works! Returned dict with keys: {list(test_memories.keys())}")
+                                memories_list = []
+                                
+                                # Try to extract memories from common dict structures
+                                for key, value in test_memories.items():
+                                    if isinstance(value, list):
+                                        memories_list.extend(value)
+                                        
+                        elif isinstance(test_memories, list):
+                            memories_list = test_memories
+                            st.success(f"✅ get_all({param_name}='{test_user_id}') works! Found {len(memories_list)} memories")
+                        else:
+                            st.warning(f"⚠️ get_all({param_name}='{test_user_id}') returned unexpected type: {type(test_memories)}")
+                            memories_list = []
                         
-                        if test_memories:
-                            sample = test_memories[0]
-                            st.write(f"Memory type: {type(sample)}")
+                        # Show sample memory if available
+                        if memories_list:
+                            sample = memories_list[0]
+                            st.write(f"Sample memory type: {type(sample)}")
                             logger.info(f"📋 Sample get_all memory type: {type(sample)}")
                             
                             if hasattr(sample, '__dict__'):
@@ -257,7 +309,14 @@ def test_mem0_connection():
                             elif isinstance(sample, dict):
                                 st.write("Sample memory keys:", list(sample.keys()))
                                 logger.info(f"📋 Sample get_all memory keys: {list(sample.keys())}")
-                            
+                                
+                                # Show a preview of the memory content
+                                if 'memory' in sample:
+                                    st.write(f"Memory content preview: {str(sample['memory'])[:100]}...")
+                                elif 'text' in sample:
+                                    st.write(f"Memory text preview: {str(sample['text'])[:100]}...")
+                        else:
+                            st.info(f"ℹ️ No memories found for user '{test_user_id}'")
                     except Exception as e:
                         logger.error(f"❌ get_all({param_name}) failed: {str(e)}", exc_info=True)
                         st.error(f"❌ get_all({param_name}) failed: {str(e)}")
@@ -347,12 +406,38 @@ def get_user_memories(user_id: str) -> List[Dict[Any, Any]]:
                 logger.info(f"🔍 Calling mem0.get_all(user_id='{user_id}')")
                 memories = mem0.get_all(user_id=user_id)
                 logger.info(f"📊 get_all result type: {type(memories)}")
-                logger.info(f"📊 get_all result length: {len(memories) if memories else 0}")
+                logger.info(f"📊 get_all result: {memories}")
                 
-                if memories:
+                # Handle different return types from get_all()
+                memories_list = []
+                if isinstance(memories, dict):
+                    logger.info("📊 get_all returned a dictionary")
+                    if 'results' in memories:
+                        memories_list = memories['results']
+                        logger.info(f"📊 Found {len(memories_list)} memories in 'results' key")
+                    else:
+                        # Try to extract memories from other possible keys
+                        for key, value in memories.items():
+                            if isinstance(value, list):
+                                memories_list.extend(value)
+                                logger.info(f"📊 Found {len(value)} memories in '{key}' key")
+                        
+                        if not memories_list:
+                            logger.info("📊 No list values found in dictionary, treating as single memory")
+                            # If the dict itself looks like a memory, treat it as one
+                            if 'memory' in memories or 'text' in memories or 'id' in memories:
+                                memories_list = [memories]
+                elif isinstance(memories, list):
+                    memories_list = memories
+                    logger.info(f"📊 get_all returned a list with {len(memories_list)} items")
+                else:
+                    logger.warning(f"📊 get_all returned unexpected type: {type(memories)}")
+                    memories_list = []
+                
+                if memories_list:
                     logger.info("🔄 Processing get_all memory objects...")
                     processed_memories = []
-                    for i, memory in enumerate(memories):
+                    for i, memory in enumerate(memories_list):
                         logger.info(f"  Processing get_all memory {i+1}: type={type(memory)}")
                         
                         try:
